@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Plano Interactivo con Control de Luces</title>
+  <style>
+    body {
+      display: flex;
+      flex-direction: row;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      background: linear-gradient(180deg, #f2f4f7 0%, #e3e6eb 100%);
+      font-family: "Segoe UI", sans-serif;
+      gap: 30px;
+    }
+
+    /* Lateral con botones globales */
+    .panel-lateral {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+
+    .panel-lateral h4 {
+      margin: 0 0 10px 0;
+      text-align: center;
+    }
+
+    .panel-lateral button {
+      padding: 10px 12px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .panel-lateral button.encender-todo {
+      background: #ffe066;
+    }
+
+    .panel-lateral button.apagar-todo {
+      background: #d4d4d4;
+    }
+
+    .panel-lateral button.verano {
+      background: #8fd3ff;
+      color: #00264d;
+    }
+
+    .panel-lateral button.verano.active {
+      box-shadow: 0 0 10px rgba(141,211,255,0.8);
+      transform: scale(1.03);
+    }
+
+    .panel-lateral button:hover {
+      transform: scale(1.03);
+    }
+
+    /* SVG del plano */
+    svg {
+      width: 654px;
+      height: auto;
+      border: 2px solid #333;
+      cursor: pointer;
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    }
+
+    .habitacion {
+      fill: transparent;
+      stroke: none;
+      transition: fill 0.3s;
+    }
+
+    .etiqueta {
+      font-size: 14px;
+      font-weight: bold;
+      fill: #333;
+    }
+
+    /* Panel de control debajo */
+    .panel-control {
+      margin-top: 15px;
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      width: 400px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+      text-align: center;
+      display: none;
+    }
+
+    .panel-control h3 {
+      margin: 0 0 10px 0;
+    }
+
+    .panel-control button {
+      width: 100%;
+      padding: 10px;
+      margin-top: 8px;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      background-color: #d4d4d4;
+      transition: all 0.2s;
+    }
+
+    .panel-control button.encendido {
+      background-color: #ffe066;
+      color: #000;
+      box-shadow: 0 0 10px 2px #ffeb3b;
+    }
+
+    .panel-control input[type="range"] {
+      width: 100%;
+      margin-top: 15px;
+      accent-color: #ffeb3b;
+    }
+
+    .slider-container {
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      margin-top: 10px;
+    }
+
+    /* Panel de sensores */
+    #sensores-panel {
+      margin-top: 12px;
+      text-align: left;
+    }
+
+    #sensores-panel h4 {
+      margin: 8px 0 6px 0;
+    }
+
+    /* Indicador de alarma */
+    .alarm-indicator {
+      margin-top: 15px;
+      padding: 12px;
+      border-radius: 8px;
+      font-weight: bold;
+      text-align: center;
+      transition: all 0.3s;
+    }
+
+    .alarm-indicator.desactivada {
+      background-color: #e0e0e0;
+      color: #666;
+    }
+
+    .alarm-indicator.activada {
+      background-color: #ffd700;
+      color: #333;
+    }
+
+    .alarm-indicator.durmiendo {
+      background-color: #90caf9;
+      color: #333;
+    }
+
+    .alarm-indicator.disparada {
+      background-color: #ff4444;
+      color: white;
+      animation: alarmaPulse 0.5s infinite;
+    }
+
+    @keyframes alarmaPulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7); }
+      50% { box-shadow: 0 0 0 8px rgba(255, 68, 68, 0); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Panel lateral -->
+  <div class="panel-lateral">
+    <h4>Controles Globales</h4>
+    <button class="encender-todo" onclick="encenderTodas()">Encender todas</button>
+    <button class="apagar-todo" onclick="apagarTodas()">Apagar todas</button>
+    <button id="modo-verano-btn" class="verano" onclick="toggleModoVerano()">Modo Verano: OFF</button>
+    
+    <!-- Panel de sensores -->
+    <div id="sensores-panel" style="margin-top:12px; text-align:left;">
+      <h4 style="margin:8px 0 6px 0;">Sensores</h4>
+      <div>Puerta: <span id="sensor-puerta">–</span></div>
+      <div>Luz ambiente: <span id="sensor-luz">–</span></div>
+    </div>
+
+    <!-- Indicador de alarma -->
+    <div id="alarm-indicator" class="alarm-indicator desactivada">
+      Alarma: Desactivada
+    </div>
+  </div>
+
+  <div style="display:flex; flex-direction:column; align-items:center;">
+    <!-- SVG del plano -->
+    <svg viewBox="0 0 654 405" id="plano">
+      <image href="/static/sources/plano.svg" x="0" y="0" width="654" height="405" />
+
+      <!-- Habitaciones (se inicializa data-intensity en 0 por defecto si quieres) -->
+      <polygon id="sala" class="habitacion" data-intensity="0"
+               points="358,190 642,190 642,392 358,392"
+               onclick="seleccionarHabitacion(this)" />
+      <polygon id="cocina" class="habitacion" data-intensity="0"
+               points="358,13 642,13 642,122 500,122 500,190 358,190"
+               onclick="seleccionarHabitacion(this)" />
+      <polygon id="dormitorio_master" class="habitacion" data-intensity="0"
+               points="13,13 214,13 214,178 13,178"
+               onclick="seleccionarHabitacion(this)" />
+      <polygon id="baño_master" class="habitacion" data-intensity="0"
+               points="227,13 347,13 347,87 227,87"
+               onclick="seleccionarHabitacion(this)" />
+      <polygon id="baño_secundario" class="habitacion" data-intensity="0"
+               points="227,99 347,99 347,178 271,178 271,144 227,144"
+               onclick="seleccionarHabitacion(this)" />
+      <polygon id="dormitorio_secundario" class="habitacion" data-intensity="0"
+               points="190,254 351,254 351,392 190,392"
+               onclick="seleccionarHabitacion(this)" />
+      <polygon id="pasillo" class="habitacion" data-intensity="0"
+               points="84,190 358,190 358,243 84,243"
+               onclick="seleccionarHabitacion(this)" />
+
+      <!-- Etiquetas -->
+      <text x="490" y="295" class="etiqueta">Sala</text>
+      <text x="481" y="72" class="etiqueta">Cocina</text>
+      <text x="70" y="98" class="etiqueta">Dormitorio master</text>
+      <text x="248" y="50" class="etiqueta">Baño master</text>
+      <text x="248" y="130" class="etiqueta">Baño secundario</text>
+      <text x="200" y="318" class="etiqueta">Dormitorio secundario</text>
+      <text x="228" y="213" class="etiqueta">Pasillo</text>
+    </svg>
+
+    <!-- Panel de control -->
+    <div id="panel" class="panel-control">
+      <h3 id="nombre-habitacion">Habitación</h3>
+      <button id="boton-luz" onclick="toggleLuz()">Encender luz</button>
+      <div class="slider-container">
+        <label for="slider">Intensidad:</label>
+        <input type="range" id="slider" min="0" max="100" value="0" oninput="ajustarIntensidad(this.value)">
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let habitacionActiva = null;
+
+    // Seleccionar una habitación: restaurar su intensidad almacenada
+    function seleccionarHabitacion(elem) {
+      habitacionActiva = elem;
+      const panel = document.getElementById('panel');
+      const nombre = document.getElementById('nombre-habitacion');
+      const boton = document.getElementById('boton-luz');
+      const slider = document.getElementById('slider');
+
+      panel.style.display = 'block';
+      nombre.textContent = elem.id.replace(/_/g, ' ');
+
+      // Leer intensidad almacenada (si no existe, 0)
+      const stored = elem.dataset.intensity ? parseInt(elem.dataset.intensity, 10) : 0;
+      slider.value = stored;
+
+      // Aplicar visualmente la intensidad (esto también dejará la clase encendida o apagada)
+      // Fijamos habitacionActiva primero para que ajustarIntensidad pueda operar.
+      ajustarIntensidad(stored);
+
+      // Actualizar botón según estado real (intensidad > 0 => encendida)
+      const intensidad = Number(stored);
+      boton.textContent = intensidad > 0 ? 'Apagar luz' : 'Encender luz';
+      boton.classList.toggle('encendido', intensidad > 0);
+    }
+
+    // Alternar encendido/apagado: sincroniza slider y guarda intensidad
+    function toggleLuz() {
+      if (!habitacionActiva) return;
+      const boton = document.getElementById('boton-luz');
+      const slider = document.getElementById('slider');
+
+      // Si actualmente apagada (intensidad 0) -> encender (100)
+      const current = habitacionActiva.dataset.intensity ? parseInt(habitacionActiva.dataset.intensity, 10) : 0;
+      const nuevo = current > 0 ? 0 : 100;
+
+      slider.value = nuevo;
+      ajustarIntensidad(nuevo); // esto actualiza data-intensity y el estilo
+      boton.textContent = nuevo > 0 ? 'Apagar luz' : 'Encender luz';
+      boton.classList.toggle('encendido', nuevo > 0);
+
+      // Enviar el nuevo estado al servidor de la BBB
+      // Usa setIntensityRemote para sincronizar correctamente la intensidad
+      if (habitacionActiva) setIntensityRemote(habitacionActiva.id, nuevo);
+
+    }
+
+    // Ajusta la intensidad (valor 0..100). Guarda en data-intensity y actualiza el relleno.
+    function ajustarIntensidad(valor) {
+      if (!habitacionActiva) return;
+      const v = Number(valor);
+      const intensidad = v / 100;
+
+      // Guardar el valor en el atributo data-intensity para persistir la elección
+      habitacionActiva.dataset.intensity = String(v);
+
+      // Aplicar relleno acorde a la intensidad (multiplica por 0.6 para la opacidad máxima)
+      if (intensidad > 0) {
+        habitacionActiva.classList.add('encendida');
+        habitacionActiva.style.fill = `rgba(255, 255, 100, ${0.6 * intensidad})`;
+      } else {
+        habitacionActiva.classList.remove('encendida');
+        habitacionActiva.style.fill = 'transparent';
+      }
+
+      // Sincronizar el texto y estilo del botón del panel
+      const boton = document.getElementById('boton-luz');
+      boton.textContent = intensidad > 0 ? 'Apagar luz' : 'Encender luz';
+      boton.classList.toggle('encendido', intensidad > 0);
+
+      // Enviar la nueva intensidad al servidor de la BBB
+      fetch('/set_intensity', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ habitacion: habitacionActiva.id, intensidad: valor })
+      });
+
+    }
+
+    // Encender todas las habitaciones al 100% y guardar intensidad
+    function encenderTodas() {
+      document.querySelectorAll('.habitacion').forEach(h => {
+        h.dataset.intensity = '100';
+        h.classList.add('encendida');
+        h.style.fill = 'rgba(255, 255, 100, 0.6)';
+      });
+
+      // Peticiones al servidor Flask por cada habitación
+      document.querySelectorAll('.habitacion').forEach(h => {
+        setIntensityRemote(h.id, 100);
+      });
+
+      // Si hay una habitación activa, actualizar su panel
+      if (habitacionActiva) {
+        document.getElementById('slider').value = 100;
+        document.getElementById('boton-luz').textContent = 'Apagar luz';
+        document.getElementById('boton-luz').classList.add('encendido');
+      }
+    }
+
+    // Apagar todas las habitaciones (intensidad 0)
+    function apagarTodas() {
+      document.querySelectorAll('.habitacion').forEach(h => {
+        h.dataset.intensity = '0';
+        h.classList.remove('encendida');
+        h.style.fill = 'transparent';
+      });
+      // Peticiones al servidor Flask por cada habitación
+      document.querySelectorAll('.habitacion').forEach(h => {
+        setIntensityRemote(h.id, 0);
+      });
+      
+      if (habitacionActiva) {
+        document.getElementById('slider').value = 0;
+        document.getElementById('boton-luz').textContent = 'Encender luz';
+        document.getElementById('boton-luz').classList.remove('encendido');
+      }
+    }
+
+    function leerSensores() {
+      // Llama al endpoint Flask '/leer_sensores' y actualiza el panel de sensores
+      fetch('/leer_sensores')
+        .then(r => {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(data => {
+          // Nuevos campos enviados por backend: puerta_valor, puerta_abierta, luz_valor, luz_dia
+          const puertaEl = document.getElementById('sensor-puerta');
+          const luzEl = document.getElementById('sensor-luz');
+          if (puertaEl && data.puerta_valor !== undefined) {
+            const puertaAbierta = data.puerta_abierta !== undefined ? data.puerta_abierta : (data.puerta_valor < (data.umbrales?.puerta ?? 500));
+            puertaEl.textContent = puertaAbierta ? 'Abierta' : 'Cerrada';
+            puertaEl.title = `Valor: ${data.puerta_valor}`;
+          }
+          if (luzEl && data.luz_valor !== undefined) {
+            const hayLuz = data.luz_dia !== undefined ? data.luz_dia : (data.luz_valor > (data.umbrales?.luz ?? 500));
+            luzEl.textContent = hayLuz ? 'Luz' : 'Oscuro';
+            luzEl.title = `Valor: ${data.luz_valor}`;
+          }
+          // Ejecutar lógica automática (puerta / luz) tras actualizar la UI
+          try { processSensorLogic(data); } catch (e) { console.error('processSensorLogic error:', e); }
+        })
+        .catch(err => {
+          console.error('leerSensores error:', err);
+        });
+    }
+
+    // Opcional: inicializar visual según data-intensity (por si cargas valores desde antes)
+    window.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('.habitacion').forEach(h => {
+        const stored = h.dataset.intensity ? parseInt(h.dataset.intensity, 10) : 0;
+        if (stored > 0) {
+          h.classList.add('encendida');
+          h.style.fill = `rgba(255, 255, 100, ${0.6 * (stored/100)})`;
+        } else {
+          h.classList.remove('encendida');
+          h.style.fill = 'transparent';
+        }
+      });
+      // Inicia el polling periódico de sensores: llamada inmediata + cada 1s
+      if (typeof leerSensores === 'function') {
+        leerSensores();
+        setInterval(leerSensores, 1000);
+      }
+      // Inicia el polling del estado de alarma
+      if (typeof actualizarEstadoAlarma === 'function') {
+        actualizarEstadoAlarma();
+        setInterval(actualizarEstadoAlarma, 500);
+      }
+    });
+    
+    // ------------------ Lógica de control automática ------------------
+    // Habitaciones que deben encenderse al detectar la puerta abierta
+    const DOOR_ROOMS = ['pasillo', 'sala'];
+    // Habitaciones que deben encenderse al anochecer y apagarse al amanecer
+    const NIGHT_ROOMS = ['dormitorio_master', 'cocina', 'pasillo'];
+
+    // Evitar acciones repetidas: cooldown por sensor en ms
+    const AUTO_COOLDOWN_MS = 5000;
+    const lastSensorState = { puerta: null, luz: null };
+    const lastAutoTime = { puerta: 0, luz: 0 };
+
+    // Modo verano: cuando está activo, el sensor de luz controlará NIGHT_ROOMS
+    let modoVerano = false;
+
+    // ============= ESTADO DE ALARMA MQTT =============
+    let estadoAlarmaActual = 'DESACTIVADA';
+
+    function actualizarEstadoAlarma() {
+      fetch('/estado_alarma')
+        .then(r => {
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .then(data => {
+          const nuevoEstado = (data.estado || '').toUpperCase();
+          console.log('Estado alarma recibido del servidor:', data.estado, '-> convertido a:', nuevoEstado);
+          
+          if (nuevoEstado === estadoAlarmaActual) {
+            console.log('Estado sin cambios, no se actualiza la UI');
+            return;
+          }
+          
+          estadoAlarmaActual = nuevoEstado;
+          const indicador = document.getElementById('alarm-indicator');
+          
+          if (!indicador) {
+            console.error('Elemento alarm-indicator no encontrado');
+            return;
+          }
+          
+          console.log('Actualizando indicador con estado:', estadoAlarmaActual);
+          
+          // Limpiar todas las clases
+          indicador.className = 'alarm-indicator';
+          
+          // Añadir clase según estado y actualizar texto
+          let texto = '';
+          let clase = '';
+          
+          switch(estadoAlarmaActual) {
+            case 'DESACTIVADA':
+              texto = 'Alarma: Desactivada';
+              clase = 'desactivada';
+              break;
+            case 'ACTIVADA':
+              texto = 'Alarma: Activada';
+              clase = 'activada';
+              break;
+            case 'DISPARADA':
+              texto = '⚠️ ALARMA DISPARADA';
+              clase = 'disparada';
+              break;
+            case 'DURMIENDO':
+              texto = 'Alarma: Durmiendo';
+              clase = 'durmiendo';
+              break;
+            default:
+              texto = 'Estado: ' + estadoAlarmaActual;
+              clase = 'desactivada';
+              console.warn('Estado alarma no reconocido:', estadoAlarmaActual);
+          }
+          
+          console.log('Aplicando: texto=', texto, 'clase=', clase);
+          indicador.textContent = texto;
+          indicador.classList.add(clase);
+        })
+        .catch(err => console.error('actualizarEstadoAlarma error:', err));
+    }
+
+    function toggleModoVerano() {
+      const wasActive = modoVerano;
+      modoVerano = !modoVerano;
+      const btn = document.getElementById('modo-verano-btn');
+      if (btn) {
+        btn.textContent = modoVerano ? 'Modo Verano: ON' : 'Modo Verano: OFF';
+        btn.classList.toggle('active', modoVerano);
+      }
+
+      if (!modoVerano && wasActive) {
+        // Al desactivar modo verano, apagar las luces de NIGHT_ROOMS
+        NIGHT_ROOMS.forEach(r => setIntensityRemote(r, 0));
+      } else if (modoVerano && !wasActive) {
+        // Al activar modo verano, forzar lectura inmediata de sensores para evaluar estado
+        // Resetear estado previo para forzar reevaluación
+        lastSensorState.luz = null;
+        lastAutoTime.luz = 0;
+        if (typeof leerSensores === 'function') {
+          leerSensores();
+        }
+      }
+    }
+
+    // Helpers para llamadas al servidor que también actualizan la UI local
+    function setIntensityRemote(habitacion, intensidad) {
+      const el = document.getElementById(habitacion);
+      if (el) {
+        el.dataset.intensity = String(intensidad);
+        if (intensidad > 0) {
+          el.classList.add('encendida');
+          el.style.fill = `rgba(255, 255, 100, ${0.6 * (intensidad/100)})`;
+        } else {
+          el.classList.remove('encendida');
+          el.style.fill = 'transparent';
+        }
+      }
+
+      return fetch('/set_intensity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ habitacion: habitacion, intensidad: Number(intensidad) })
+      }).catch(err => console.error('setIntensityRemote error:', err));
+    }
+
+    // Procesa la lectura de sensores y aplica reglas automáticas
+    function processSensorLogic(data) {
+      const now = Date.now();
+      // Usar flags semánticos enviados por backend; fallback a heurística si faltan
+      const puertaAbierta = (data.puerta_abierta !== undefined)
+        ? data.puerta_abierta
+        : (data.puerta_valor !== undefined && data.puerta_valor < (data.umbrales?.puerta ?? 500));
+
+      if (puertaAbierta !== null && puertaAbierta !== undefined) {
+        if (lastSensorState.puerta !== puertaAbierta && (now - lastAutoTime.puerta) > AUTO_COOLDOWN_MS) {
+          lastAutoTime.puerta = now;
+          lastSensorState.puerta = puertaAbierta;
+          if (puertaAbierta) {
+            DOOR_ROOMS.forEach(r => setIntensityRemote(r, 100));
+          }
+        }
+      }
+
+      if (!modoVerano) return; // Si modo verano OFF, no aplicar lógica luz
+
+      const esDia = (data.luz_dia !== undefined)
+        ? data.luz_dia
+        : (data.luz_valor !== undefined && data.luz_valor > (data.umbrales?.luz ?? 500));
+
+      if (esDia !== null && esDia !== undefined) {
+        if (lastSensorState.luz !== esDia && (now - lastAutoTime.luz) > AUTO_COOLDOWN_MS) {
+          lastAutoTime.luz = now;
+          lastSensorState.luz = esDia;
+          if (!esDia) {
+            NIGHT_ROOMS.forEach(r => setIntensityRemote(r, 60));
+          } else {
+            NIGHT_ROOMS.forEach(r => setIntensityRemote(r, 0));
+          }
+        }
+      }
+    }
+  </script>
+
+</body>
+</html>
